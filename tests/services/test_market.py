@@ -3,7 +3,7 @@ import pytest
 import respx
 from httpx import Response
 
-from src.app.services import market
+from app.services import market
 
 
 @pytest.mark.asyncio
@@ -47,11 +47,12 @@ async def test_fetch_stock_quote_success() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stock_quote_invalid_payload_raises_value_error() -> None:
+async def test_fetch_stock_quote_returns_fallback_on_invalid_payload() -> None:
     respx.get(market.YAHOO_QUOTE_URL).mock(return_value=Response(200, json={}))
 
-    with pytest.raises(ValueError):
-        await market.fetch_stock_quote("TSLA")
+    quote = await market.fetch_stock_quote("TSLA")
+
+    assert quote.is_fallback
 
 
 @pytest.mark.asyncio

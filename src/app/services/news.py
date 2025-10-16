@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -9,7 +12,20 @@ from typing import Any
 import httpx
 
 REDDIT_NEWS_URL = "https://www.reddit.com/r/TeslaMotors/new.json"
-USER_AGENT = "TeslaDashboard/0.1 (+https://localhost)"
+MAX_NEWS_LIMIT = 20
+CACHE_TTL_SECONDS = 120
+USER_AGENT = os.getenv(
+    "TESLA_NEWS_USER_AGENT",
+    "TeslaDashboard/0.1 (+https://github.com/jz/tesla-news)",
+)
+REQUEST_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "application/json",
+}
+
+_CACHE_LOCK = asyncio.Lock()
+_cached_items: list[NewsItem] = []
+_cached_at: float | None = None
 
 
 @dataclass(slots=True)
@@ -23,14 +39,32 @@ class NewsItem:
 
 
 async def fetch_latest_news(limit: int = 5) -> list[NewsItem]:
-    """Fetch latest Tesla news from the Reddit community feed."""
-    params = {"limit": max(1, min(limit, 20))}
-    headers = {"User-Agent": USER_AGENT}
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(REDDIT_NEWS_URL, params=params, headers=headers)
-    response.raise_for_status()
-    payload = response.json()
-    return _parse_news(payload)
+    """Fetch latest Tesla news from the Reddit community feed with a short-lived cache."""
+    bounded_limit = max(1, min(limit, MAX_NEWS_LIMIT))
+    cached = _get_cached_items(bounded_limit)
+    if cached is not None:
+        return cached
+
+    async with _CACHE_LOCK:
+        cached = _get_cached_items(bounded_limit)
+        if cached is not None:
+            return cached
+
+        params = {"limit": bounded_limit, "raw_json": 1}
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(REDDIT_NEWS_URL, params=params, headers=REQUEST_HEADERS)
+            response.raise_for_status()
+            payload = response.json()
+            items = _parse_news(payload)
+        except (httpx.HTTPError, ValueError):
+            stale = _get_cached_items(bounded_limit, allow_stale=True)
+            if stale is not None:
+                return stale
+            raise
+
+        _store_cache(items)
+        return items[:bounded_limit]
 
 
 def _parse_news(payload: Any) -> list[NewsItem]:
@@ -59,6 +93,30 @@ def _parse_news(payload: Any) -> list[NewsItem]:
         )
 
     return items
+
+
+def _store_cache(items: list[NewsItem]) -> None:
+    global _cached_items, _cached_at
+    _cached_items = list(items)
+    _cached_at = time.monotonic()
+
+
+def _get_cached_items(limit: int, *, allow_stale: bool = False) -> list[NewsItem] | None:
+    if not _cached_items:
+        return None
+    if _cached_at is None:
+        return None
+    if not allow_stale and time.monotonic() - _cached_at > CACHE_TTL_SECONDS:
+        return None
+    capped_limit = min(limit, len(_cached_items))
+    return [*_cached_items[:capped_limit]]
+
+
+def _reset_cache() -> None:
+    """Test helper to clear cached responses."""
+    global _cached_items, _cached_at
+    _cached_items = []
+    _cached_at = None
 
 
 __all__ = ["NewsItem", "fetch_latest_news"]
