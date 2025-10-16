@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla Dashboard</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            background: radial-gradient(circle at top, rgba(66,153,225,0.2), rgba(15,23,42,1) 55%);
+        }
+
+        .card {
+            width: min(900px, 90vw);
+            border-radius: 18px;
+            padding: 2.5rem;
+            background: rgba(15, 23, 42, 0.85);
+            box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(18px);
+        }
+
+        h1 {
+            margin: 0 0 0.25rem;
+            font-size: clamp(2.5rem, 5vw, 3.5rem);
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .subtitle {
+            margin: 0;
+            color: #94a3b8;
+            font-size: 1rem;
+        }
+
+        .price-panel {
+            margin-top: 2rem;
+            border-radius: 14px;
+            padding: 1.75rem 2rem;
+            background: linear-gradient(135deg, rgba(248, 250, 252, 0.08), rgba(51, 65, 85, 0.6));
+            display: grid;
+            gap: 0.6rem;
+        }
+
+        .symbol {
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: #38bdf8;
+        }
+
+        .price {
+            font-size: clamp(2.25rem, 6vw, 3rem);
+            font-weight: 600;
+        }
+
+        .change {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .change.up {
+            color: #4ade80;
+        }
+
+        .change.down {
+            color: #f87171;
+        }
+
+        .timestamp {
+            color: #cbd5f5;
+            font-size: 0.95rem;
+        }
+
+        .alert {
+            margin-top: 1.5rem;
+            padding: 1rem 1.2rem;
+            border-radius: 12px;
+            background: rgba(248, 113, 113, 0.2);
+            color: #fecaca;
+        }
+
+        .notice {
+            margin-top: 1.5rem;
+            padding: 1rem 1.2rem;
+            border-radius: 12px;
+            background: rgba(56, 189, 248, 0.18);
+            color: #bae6fd;
+        }
+
+        h2 {
+            margin-top: 2.5rem;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .news-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 1rem;
+        }
+
+        .news-item {
+            padding: 1.25rem 1.5rem;
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            transition: border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .news-item:hover {
+            border-color: rgba(56, 189, 248, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .news-item a {
+            color: inherit;
+            text-decoration: none;
+            font-size: 1.15rem;
+            font-weight: 500;
+        }
+
+        .news-meta {
+            margin-top: 0.45rem;
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 1rem;
+            }
+
+            .card {
+                padding: 1.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <header>
+            <h1>Tesla Pulse</h1>
+            <p class="subtitle">Live market snapshot and community headlines</p>
+        </header>
+
+        {% if quote %}
+        <section class="price-panel">
+            <span class="symbol">{{ quote.symbol }}</span>
+            <span class="price">
+                {{ "${:,.2f}".format(quote.price) }} {{ quote.currency }}
+            </span>
+            {% if quote.change is not none and quote.percent_change is not none %}
+            <span class="change {{ 'up' if quote.change >= 0 else 'down' }}">
+                {{ "{:+.2f}".format(quote.change) }}
+                ({{ "{:+.2f}".format(quote.percent_change) }}%)
+                {{ "↑" if quote.change >= 0 else "↓" }}
+            </span>
+            {% endif %}
+            <span class="timestamp">
+                Market state: {{ quote.market_state or "N/A" }} ·
+                As of {{ quote.market_time.strftime("%Y-%m-%d %H:%M %Z") }}
+            </span>
+        </section>
+        {% endif %}
+
+        {% if quote_error %}
+        <div class="alert">{{ quote_error }}</div>
+        {% endif %}
+        {% if quote_warning %}
+        <div class="notice">{{ quote_warning }}</div>
+        {% endif %}
+
+        <section>
+            <h2>Latest Tesla News</h2>
+            {% if news_items %}
+            <ul class="news-list">
+                {% for item in news_items %}
+                <li class="news-item">
+                    <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">
+                        {{ item.title }}
+                    </a>
+                    <div class="news-meta">
+                        {{ item.source }} · {{ item.published_at.strftime("%Y-%m-%d %H:%M %Z") }}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if news_error %}
+            <div class="alert">{{ news_error }}</div>
+            {% endif %}
+        </section>
+    </div>
+</body>
+</html>
